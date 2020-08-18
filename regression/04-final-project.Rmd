@@ -1,0 +1,291 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+html_document: 
+fig_height: 4
+highlight: pygments
+theme: spacelab
+---
+  
+## Setup
+  
+### Load packages
+  
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+library(ggExtra)
+library(ggpubr)
+library(gridExtra)
+library(janitor)
+library(ggmosaic)
+library(SignifReg)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+  
+## Part 1: Data
+  
+
+According to the Codebook, this data set is comprised of 651 randomly sampled movies produced
+and released before 2016. Each row is a movie and each column a characteristic of it.
+
+As it is a *simple random sample*, we can apply inference methods into it, allowing us to make
+assumptions and generalizations about the population of interest only with the data we have in
+here. That is the reason why the randomness of data is so important.
+
+Without this condition, we could not make any use of the hypothesis tests required to check the
+significance of the variables in our linear regression model.
+
+However, as it is a observacional study, in which individual are observed and certain outcomes
+are measured, the data cannot be utilized to estabilish causal relations between the variables.
+
+In this study, we are interested in learning what attributes make a movie popular. First of
+all, we need to discuss what makes a movie popular.
+
+
+* * *
+  
+## Part 2: Research question
+  
+Determining what makes a movie popular is not an easy task. The answer for this question has been
+researched by many authors along the time, because of its relevance to the movie industry.
+
+Usually, it is very expensive to make a good movie. According to a report published by Phys.Org, "it costs around \$65 million to produce a major studio movie, plus another \$35 million for marketing and distribution, so getting it right is crucial."
+
+According to Preetha Rajan, identifying the key atributes in a movie that determines its popularity is an important task, therefore 
+
+
+Is a movie´s IMdB score associated  with  
+  
+* * *
+  
+## Part 3: Exploratory data analysis
+  
+* * *
+```{r}
+#Step 1: Selection of relevant variables. The selected variables are audience_score, genre, critics_score, critics_rating, audience rating, best_pic_nom, best_pic_win, best_actor_win, best_actress_win, best_dir_win, top200_box and imdb_num_votes.
+
+dt <- movies[complete.cases(movies),] %>% select(title,audience_score, genre, critics_score, critics_rating, audience_rating, best_pic_nom, best_pic_win, best_actor_win, best_actress_win, best_dir_win, top200_box,imdb_num_votes)
+
+# looking to each variable
+
+# frequency table for movie genre
+dt %>% tabyl(genre, sort = T) %>% arrange(desc(n))
+
+# bar plot for critics_rating
+p1 <- dt %>% ggplot(aes(critics_rating)) + geom_bar() + theme_pubclean()
+
+# bar plot for best_pic_nom
+p2 <- dt %>% ggplot(aes(best_pic_nom)) + geom_bar()
+
+# bar plot for best_pic_win
+p3 <- dt %>% ggplot(aes(best_pic_win)) + geom_bar()
+
+# bar plot for best_actor_win
+p4 <- dt %>% ggplot(aes(best_actor_win)) + geom_bar()
+
+# bar plot for best_actress_win
+p5 <- dt %>% ggplot(aes(best_actress_win)) + geom_bar()
+
+# bar plot for best_dir_win
+p6 <- dt %>% ggplot(aes(best_dir_win)) + geom_bar()
+
+# bar plot for top200_box
+p7 <- dt %>% ggplot(aes(top200_box)) + geom_bar()
+
+# bar plot for critics_rating
+p8 <- dt %>% ggplot(aes(critics_rating)) + geom_bar()
+
+# plotting the views
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+
+grid.arrange(p5, p6, p7, p8, ncol=2)
+
+```
+
+````{r}
+# relations between the variables
+dt %>% ggplot() + geom_mosaic(aes(product(critics_rating), fill = top200_box))
+
+dt %>% ggplot() + geom_violin(aes(critics_rating, critics_score, color = "red", alpha = 0.4)) +
+  geom_violin(aes(critics_rating, audience_score, color = "blue", alpha = 0.4))
+
+#dt %>% forcats::fct_infreq(genre) %>%  ggplot(aes(genre)) + geom_bar
+
+dt %>% ggplot(aes(x=top200_box,audience_score)) + geom_violin() + geom_boxplot(size=0.5,alpha = 0.4)
+
+p <-dt %>% ggplot(aes(x=critics_score,audience_score)) + geom_point() + geom_smooth(method = "lm")
+p %>% ggMarginal()
+
+ dt %>% ggplot(aes(audience_score,critics_score, color = critics_rating)) + geom_point() + facet_wrap(~top200_box) 
+
+dt %>% ggplot(aes(audience_score,critics_score, color = critics_rating)) + geom_point() + facet_wrap(~best_pic_nom) 
+
+dt %>% ggplot(aes(audience_score,critics_score, color = critics_rating)) + geom_point() + facet_wrap(~best_pic_win) 
+
+dt %>% ggplot(aes(audience_score,critics_score, color = critics_rating)) + geom_point() + facet_wrap(~best_actor_win)
+
+dt %>% ggplot(aes(audience_score,critics_score, color = critics_rating)) + geom_point() + facet_wrap(~best_actress_win)
+
+dt %>% ggplot(aes(audience_score,critics_score, color = critics_rating)) + geom_point() + facet_wrap(~best_dir_win)
+
+#dt %>% select(audience_score,critics_score,critics_rating,genre) %>% ggparcoord(columns = 1:4, mapping = aes(color = as_factor(dt$genre))) +scale_color_discrete("Movie Genre",labels=levels(dt$genre))
+
+```
+  
+## Part 4: Modeling
+
+```{r}
+# Split the data set into training and test set.
+#80% of 651 rows is 520.8 - the floor function is rounding this down to 520 to give you a
+#training set size of 520
+#Setting a seed is an extremely important step to be able to make your results reproducible
+set.seed(123)
+
+nsamples <- floor(0.90*nrow(dt))
+#The seq_len function creates a sequence that starts at 1 and with steps of 1 finishes at the number value (which in this case is the number of unique rows in the Final Movie Data Set). A common use of this function is to create indexes that match the length of a vector in order to make plots.
+#What train_ind contains are the row numbers from the original data set that constitutes the training set
+#The sample function ensures that the original data set is split at random into the training and test set
+train_ind <- sample(seq_len(nrow(dt)), size = nsamples)
+train_90 <- dt[train_ind, ]
+test_10 <- dt[-train_ind, ]
+```
+
+
+The parcimonious model will be chosen on the basis of P-values criterion via backward selection process.
+
+We start with the full mudel
+```{r model-1}
+
+fit1 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating + best_pic_nom + best_pic_win + best_actor_win + best_actress_win + best_dir_win + top200_box + imdb_num_votes, data = train_90)
+summary(fit1)
+
+```
+
+Then, we drop the predictor with the highest p-value (best_dir_win)
+
+```{r model-2}
+
+fit2 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating + best_pic_nom + best_pic_win + best_actress_win + best_actor_win + top200_box + imdb_num_votes, data = train_90)
+summary(fit2)
+```
+
+ As our R-Squared have increased a bit, we now drop the variable best_actor_win from the model
+```{r model-3}
+fit3 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating + best_pic_nom + best_pic_win + best_actress_win + top200_box + imdb_num_votes, data = train_90)
+
+summary(fit3)
+
+```
+
+Now, we drop the variable best_actress_win from the model
+
+```{r model-4}
+
+fit4 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating + best_pic_nom + best_pic_win + top200_box + imdb_num_votes, data = train_90)
+
+summary(fit4)
+
+```
+
+We will drop now the variable top200_box
+```{r model-5}
+
+fit5 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating + best_pic_nom + best_pic_win + imdb_num_votes, data = train_90)
+
+summary(fit5)
+
+```
+
+Now we drop best_pic_win
+
+```{r model-6}
+
+fit6 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating + best_pic_nom + imdb_num_votes, data = train_90)
+
+summary(fit6)
+
+```
+
+```{r model-7}
+
+fit7 <- lm(formula = audience_score ~ genre + critics_score + critics_rating + audience_rating +  imdb_num_votes, data = train_90)
+
+summary(fit7)
+
+
+```
+
+As your R-Squared decreases, we might want to keep the variable best_pic_nom.
+Let`s try to remove the variable critics_rating instead:
+
+```{r model-8}
+
+
+fit8 <- lm(formula = audience_score ~ genre + critics_score + audience_rating + best_pic_nom + imdb_num_votes, data = train_90)
+
+summary(fit8)
+
+```
+
+So, according to R-Squared criterion, the chosen parcimonious model is number 6.
+
+Now that we have the final parcimonious model,  prior to interpreting the model coefficients and making predictions, the next step are the model diagnostics, where we check whether certain critical conditions hold in order for the method of Ordinary Least Squares.
+
+```{r}
+hist(fit6$residuals)
+```
+
+```{r}
+plot(fit6$residuals)+
+abline(h=0, lt=3)
+```
+
+```{r}
+{qqnorm(fit6$residuals)
+qqline(fit6$residuals)}
+```
+
+```{r}
+
+summary(fit6)
+```
+
+* * *
+  
+## Part 5: Prediction
+  
+```{r}
+
+prmovies <- test_10 %>% select(title,genre,critics_score, audience_rating,
+    best_pic_nom, imdb_num_votes)  
+
+predictions <- predict(fit6, prmovies[,-1], interval="prediction", level=0.95)
+
+
+test <- tibble(title = test_10$title,
+               audience_score = test_10$audience_score,
+               fit = predictions[,1],
+               lower = predictions[,2],
+               upper = predictions[,3]) %>%
+  mutate(onRange = audience_score > lower & audience_score < upper, diff = audience_score - fit)
+
+test  %>% count(onRange)
+
+```
+* * *
+  
+## Part 6: Conclusion
+  
+  
+  
